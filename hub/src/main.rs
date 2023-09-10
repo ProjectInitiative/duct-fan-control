@@ -1,6 +1,5 @@
-//! This example shows how to use PWM (Pulse Width Modulation) in the RP2040 chip.
-//!
-//! The LED on the RP Pico W board is connected differently. Add a LED and resistor to another pin.
+//! This example runs on the Raspberry Pi Pico with a Waveshare board containing a Semtech Sx1262 radio.
+//! It demonstrates LORA P2P send functionality.
 
 #![no_std]
 #![no_main]
@@ -11,9 +10,8 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_lora::iv::GenericSx126xInterfaceVariant;
 use embassy_rp::gpio::{Input, Level, Output, Pin, Pull};
-use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_rp::spi::{Config, Spi};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::Delay;
 use lora_phy::mod_params::*;
 use lora_phy::sx1261_2::SX1261_2;
 use lora_phy::LoRa;
@@ -23,10 +21,8 @@ const LORA_FREQUENCY_IN_HZ: u32 = 903_900_000; // warning: set this appropriatel
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    // setup peripherals
     let p = embassy_rp::init(Default::default());
 
-    // define LoRa values
     let miso = p.PIN_12;
     let mosi = p.PIN_11;
     let clk = p.PIN_10;
@@ -49,19 +45,6 @@ async fn main(_spawner: Spawner) {
 
     let mut delay = Delay;
 
-    // define PWM values
-    let mut c: PwmConfig = Default::default();
-    // system clock at 125Mhz, 125Mhz/5000 = 25khz PWM
-    // c.top = 0x1388;
-    c.top = 5000;
-    // define duty cycle for A and B pins
-    c.compare_a = c.top / 2;
-    c.compare_b = c.top / 2;
-
-    let mut pwm = Pwm::new_output_ab(p.PWM_CH4, p.PIN_8, p.PIN_9, c.clone());
-    pwm.set_config(&c);
-
-    // init LoRa Radio
     let mut lora = {
         match LoRa::new(
             SX1261_2::new(BoardType::RpPicoWaveshareSx1262, spi, iv),
@@ -78,10 +61,6 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    let mut debug_indicator = Output::new(p.PIN_25, Level::Low);
-
-    let mut receiving_buffer = [00u8; 100];
-
     let mdltn_params = {
         match lora.create_modulation_params(
             SpreadingFactor::_10,
@@ -97,15 +76,8 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    let rx_pkt_params = {
-        match lora.create_rx_packet_params(
-            4,
-            false,
-            receiving_buffer.len() as u8,
-            true,
-            false,
-            &mdltn_params,
-        ) {
+    let mut tx_pkt_params = {
+        match lora.create_tx_packet_params(4, false, true, false, &mdltn_params) {
             Ok(pp) => pp,
             Err(err) => {
                 info!("Radio error = {}", err);
@@ -114,18 +86,7 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    match lora
-        .prepare_for_rx(
-            &mdltn_params,
-            &rx_pkt_params,
-            None,
-            true,
-            false,
-            0,
-            0x00ffffffu32,
-        )
-        .await
-    {
+    match lora.prepare_for_tx(&mdltn_params, 20, false).await {
         Ok(()) => {}
         Err(err) => {
             info!("Radio error = {}", err);
@@ -133,24 +94,22 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    loop {
-        receiving_buffer = [00u8; 100];
-        match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
-            Ok((received_len, _rx_pkt_status)) => {
-                if (received_len == 3)
-                    && (receiving_buffer[0] == 0x01u8)
-                    && (receiving_buffer[1] == 0x02u8)
-                    && (receiving_buffer[2] == 0x03u8)
-                {
-                    info!("rx successful");
-                    debug_indicator.set_high();
-                    Timer::after(Duration::from_secs(5)).await;
-                    debug_indicator.set_low();
-                } else {
-                    info!("rx unknown packet");
-                }
-            }
-            Err(err) => info!("rx unsuccessful = {}", err),
+    let buffer = [0x01u8, 0x02u8, 0x03u8];
+    match lora
+        .tx(&mdltn_params, &mut tx_pkt_params, &buffer, 0xffffff)
+        .await
+    {
+        Ok(()) => {
+            info!("TX DONE");
         }
+        Err(err) => {
+            info!("Radio error = {}", err);
+            return;
+        }
+    };
+
+    match lora.sleep(&mut delay).await {
+        Ok(()) => info!("Sleep successful"),
+        Err(err) => info!("Sleep unsuccessful = {}", err),
     }
 }
