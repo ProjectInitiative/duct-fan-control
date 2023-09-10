@@ -11,7 +11,7 @@ use embassy_executor::Spawner;
 use embassy_lora::iv::GenericSx126xInterfaceVariant;
 use embassy_rp::gpio::{Input, Level, Output, Pin, Pull};
 use embassy_rp::spi::{Config, Spi};
-use embassy_time::Delay;
+use embassy_time::{Delay, Duration, Timer};
 use lora_phy::mod_params::*;
 use lora_phy::sx1261_2::SX1261_2;
 use lora_phy::LoRa;
@@ -22,6 +22,9 @@ const LORA_FREQUENCY_IN_HZ: u32 = 903_900_000; // warning: set this appropriatel
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
+
+    // setup debugging pin
+    let mut debug_indicator = Output::new(p.PIN_25, Level::Low);
 
     let miso = p.PIN_12;
     let mosi = p.PIN_11;
@@ -94,22 +97,28 @@ async fn main(_spawner: Spawner) {
         }
     };
 
-    let buffer = [0x01u8, 0x02u8, 0x03u8];
-    match lora
-        .tx(&mdltn_params, &mut tx_pkt_params, &buffer, 0xffffff)
-        .await
-    {
-        Ok(()) => {
-            info!("TX DONE");
-        }
-        Err(err) => {
-            info!("Radio error = {}", err);
-            return;
-        }
-    };
+    loop {
+        let buffer = [0x01u8, 0x02u8, 0x03u8];
+        match lora
+            .tx(&mdltn_params, &mut tx_pkt_params, &buffer, 0xffffff)
+            .await
+        {
+            Ok(()) => {
+                debug_indicator.set_high();
+                Timer::after(Duration::from_millis(500)).await;
+                debug_indicator.set_low();
+                info!("TX DONE");
+            }
+            Err(err) => {
+                info!("Radio error = {}", err);
+                return;
+            }
+        };
+        Timer::after(Duration::from_secs(5)).await;
 
-    match lora.sleep(&mut delay).await {
-        Ok(()) => info!("Sleep successful"),
-        Err(err) => info!("Sleep unsuccessful = {}", err),
+        match lora.sleep(&mut delay).await {
+            Ok(()) => info!("Sleep successful"),
+            Err(err) => info!("Sleep unsuccessful = {}", err),
+        }
     }
 }

@@ -78,6 +78,7 @@ async fn main(_spawner: Spawner) {
         }
     };
 
+    // setup debugging pin
     let mut debug_indicator = Output::new(p.PIN_25, Level::Low);
 
     let mut receiving_buffer = [00u8; 100];
@@ -134,6 +135,10 @@ async fn main(_spawner: Spawner) {
     };
 
     loop {
+        // debug_indicator.set_high();
+        // Timer::after(Duration::from_secs(5)).await;
+        // debug_indicator.set_low();
+        // Timer::after(Duration::from_secs(5)).await;
         receiving_buffer = [00u8; 100];
         match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
             Ok((received_len, _rx_pkt_status)) => {
@@ -144,10 +149,17 @@ async fn main(_spawner: Spawner) {
                 {
                     info!("rx successful");
                     debug_indicator.set_high();
-                    Timer::after(Duration::from_secs(5)).await;
+                    Timer::after(Duration::from_secs(2)).await;
                     debug_indicator.set_low();
                 } else {
                     info!("rx unknown packet");
+                    debug_indicator.set_high();
+                    Timer::after(Duration::from_millis(250)).await;
+                    debug_indicator.set_low();
+                    Timer::after(Duration::from_millis(250)).await;
+                    debug_indicator.set_high();
+                    Timer::after(Duration::from_millis(250)).await;
+                    debug_indicator.set_low();
                 }
             }
             Err(err) => info!("rx unsuccessful = {}", err),
