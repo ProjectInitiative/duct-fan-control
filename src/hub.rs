@@ -6,6 +6,7 @@
 #![macro_use]
 #![feature(type_alias_impl_trait)]
 
+use cocoon::MiniCocoon;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_lora::iv::GenericSx126xInterfaceVariant;
@@ -21,6 +22,24 @@ const LORA_FREQUENCY_IN_HZ: u32 = 903_900_000; // warning: set this appropriatel
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
+    // let mut data = "my secret data".to_owned().into_bytes();
+    const MAX_DATA_LEN: usize = 64; // Adjust this size as needed
+    let mut data = [0u8; MAX_DATA_LEN];
+    let data_str = "my secret data";
+
+    // Copy the string's bytes into the fixed-size array
+    let data_len = data_str.len().min(MAX_DATA_LEN);
+    data[0..data_len].copy_from_slice(data_str.as_bytes());
+
+    // Now, `data` contains the bytes of the string up to MAX_DATA_LEN
+    let cocoon = MiniCocoon::from_key(b"0123456789abcdef0123456789abcdef", &[0; 32]);
+
+    let detached_prefix = cocoon.encrypt(&mut data).unwrap();
+    // assert_ne!(data, b"my secret data");
+
+    cocoon.decrypt(&mut data, &detached_prefix).unwrap();
+    // assert_eq!(data, b"my secret data");
+
     let p = embassy_rp::init(Default::default());
 
     // setup debugging pin
