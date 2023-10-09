@@ -10,10 +10,25 @@
 
 use std::env;
 use std::fs::File;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
-fn main() {
+fn main() -> io::Result<()> {
+    //load environment variables from a .env file
+    dotenv::dotenv().ok();
+    // Retrieve the environment variables you need
+    let encryption_key_value = env::var("ENCRYPTION_KEY").expect("ENCRYPTION_KEY not set");
+
+    // Generate Rust code to include in the application
+    let code = format!(
+        r#"pub const ENCRYPTION_KEY: &[u8] = b"{}";"#,
+        encryption_key_value
+    );
+
+    // Write the generated code to a file
+    let mut output_file = File::create("src/secret.rs")?;
+    output_file.write_all(code.as_bytes())?;
+
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -33,4 +48,5 @@ fn main() {
     println!("cargo:rustc-link-arg-bins=-Tlink.x");
     println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
     println!("cargo:rustc-link-arg-bins=-Tdefmt.x");
+    Ok(())
 }

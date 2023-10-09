@@ -7,7 +7,6 @@
 #![macro_use]
 #![feature(type_alias_impl_trait)]
 
-use cocoon::MiniCocoon;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_lora::iv::GenericSx126xInterfaceVariant;
